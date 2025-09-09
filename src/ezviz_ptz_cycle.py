@@ -290,9 +290,19 @@ try:
                         break
                 time.sleep(0.1)
 
-            if detected:
-                track_until_clear()
-            # si no hay detección en esta ventana, seguimos al siguiente preset
+            # Solo activar seguimiento en los últimos dos presets (3 y 4)
+            if detected and i >= len(items) - 2:  # Si es uno de los últimos dos presets
+                print(f"[detect] Detección en preset {i} - manteniendo posición")
+                while True:
+                    res = pull_detection(EVENT_POLL_SECONDS)
+                    if res is True:
+                        continue  # Mantener este preset
+                    if res is False:  # Si explícitamente no hay detección
+                        time.sleep(EVENT_POLL_SECONDS)
+                        res = pull_detection(EVENT_POLL_SECONDS)  # Verificar una vez más
+                        if res is not True:
+                            break  # Salir solo si realmente no hay detección
+                    time.sleep(0.1)
 except KeyboardInterrupt:
     print("\nDetenido por el usuario.")
     try: ptz.Stop(ProfileToken=profile_token)
