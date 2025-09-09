@@ -237,6 +237,54 @@ for i,n,t in items:
 print(f"\nModo: patrulla hasta detectar PERSONA; cuando hay detección, esperar ausencia por {PERSON_CLEAR_SECONDS}s seguidos.")
 print(f"Params: dwell={DWELL}s, speed={SPEED}, events={'ON' if have_events else 'OFF'}")
 
+# ================== Notificaciones Termux ==================
+def notify_detection(preset_num: int, duration: float = 0):
+    """Notifica una detección usando Termux API"""
+    try:
+        import subprocess
+        
+        # Enviar notificación
+        title = f"¡Detección en Preset {preset_num}!"
+        msg = f"Movimiento detectado en posición {preset_num}"
+        subprocess.run([
+            'termux-notification',
+            '--title', title,
+            '--content', msg,
+            '--priority', 'high',
+            '--alert-once'  # Para no spam de notificaciones
+        ])
+        
+        # Reproducir sonido de alarma
+        alarm_path = str(Path(__file__).parent.parent / 'alarm.mp3')
+        subprocess.run([
+            'termux-media-player',
+            'play',
+            alarm_path
+        ])
+        
+        # Vibrar el dispositivo
+        subprocess.run(['termux-vibrate', '-d', '1000'])  # Vibrar por 1 segundo
+        
+        if duration > 0:
+            time.sleep(duration)
+            subprocess.run(['termux-media-player', 'stop'])
+            
+    except Exception as e:
+        if DEBUG: print(f"[notify] Error en notificación: {e}")
+
+# ================== Control de Luz ==================
+def toggle_light(on: bool = True):
+    """Controla la luz de la cámara"""
+    try:
+        # Intentar controlar la luz usando configuración de imagen
+        dev.SetImagingSettings(
+            VideoSourceToken=profiles[0].VideoSourceConfiguration.SourceToken,
+            ImagingSettings={'WhiteBalance': {'Mode': 'MANUAL' if on else 'AUTO'}}
+        )
+        if DEBUG: print(f"[light] {'Encendida' if on else 'Apagada'}")
+    except Exception as e:
+        if DEBUG: print(f"[light] Error controlando luz: {e}")
+
 # ================== Lógica principal ==================
 def track_until_clear():
     """Con Events: espera hasta que no haya detección durante PERSON_CLEAR_SECONDS seguidos.
@@ -309,6 +357,13 @@ try:
                 if confirmed:
                     print(f"[detect] Detección confirmada en preset {i} - iniciando seguimiento")
                     last_detection = time.time()
+                    detection_start = time.time()
+                    notification_sent = False
+                    
+                    # Parpadear la luz inicialmente
+                    toggle_light(True)
+                    time.sleep(1)
+                    toggle_light(False)
                     
                     while True:
                         res = pull_detection(EVENT_POLL_SECONDS)
@@ -316,8 +371,20 @@ try:
                         
                         if res is True:
                             last_detection = now
+                            # Si la detección continúa por más de 30 segundos, notificar
+                            if not notification_sent and (now - detection_start) > 30:
+                                notify_detection(i, duration=5)  # Sonar por 5 segundos
+                                notification_sent = True
+                            
+                            # Parpadear la luz cada 5 segundos
+                            if int(now) % 5 == 0:
+                                toggle_light(True)
+                                time.sleep(0.5)
+                                toggle_light(False)
+                                
                         elif now - last_detection > PERSON_CLEAR_SECONDS:
                             print(f"[detect] No hay detección por {PERSON_CLEAR_SECONDS}s - continuando patrulla")
+                            toggle_light(False)  # Asegurar que la luz quede apagada
                             break
                             
                         time.sleep(EVENT_POLL_SECONDS)
