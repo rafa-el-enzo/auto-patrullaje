@@ -292,17 +292,35 @@ try:
 
             # Solo activar seguimiento en los últimos dos presets (3 y 4)
             if detected and i >= len(items) - 2:  # Si es uno de los últimos dos presets
-                print(f"[detect] Detección en preset {i} - manteniendo posición")
-                while True:
+                print(f"[detect] Detección en preset {i} - verificando si es continua")
+                
+                # Verificar que la detección sea continua por al menos 2 segundos
+                confirmation_start = time.time()
+                confirmed = False
+                while time.time() - confirmation_start < 2:
                     res = pull_detection(EVENT_POLL_SECONDS)
                     if res is True:
-                        continue  # Mantener este preset
-                    if res is False:  # Si explícitamente no hay detección
+                        confirmed = True
+                    else:
+                        confirmed = False
+                        break
+                    time.sleep(0.2)
+                
+                if confirmed:
+                    print(f"[detect] Detección confirmada en preset {i} - iniciando seguimiento")
+                    last_detection = time.time()
+                    
+                    while True:
+                        res = pull_detection(EVENT_POLL_SECONDS)
+                        now = time.time()
+                        
+                        if res is True:
+                            last_detection = now
+                        elif now - last_detection > PERSON_CLEAR_SECONDS:
+                            print(f"[detect] No hay detección por {PERSON_CLEAR_SECONDS}s - continuando patrulla")
+                            break
+                            
                         time.sleep(EVENT_POLL_SECONDS)
-                        res = pull_detection(EVENT_POLL_SECONDS)  # Verificar una vez más
-                        if res is not True:
-                            break  # Salir solo si realmente no hay detección
-                    time.sleep(0.1)
 except KeyboardInterrupt:
     print("\nDetenido por el usuario.")
     try: ptz.Stop(ProfileToken=profile_token)
